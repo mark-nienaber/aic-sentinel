@@ -5,22 +5,16 @@ const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB
 const REQUEST_TIMEOUT_MS = 30000;
 
 class LogClient {
-  constructor({ origin, apiKey, apiSecret, customHeaders = {} }) {
+  constructor({ origin, apiKey, apiSecret, lookup, customHeaders = {} }) {
+    if (!origin || typeof lookup !== 'function') {
+      throw new Error('LogClient requires a prevalidated origin and pinned DNS lookup');
+    }
+
     this.origin = origin.replace(/\/$/, '');
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
+    this.lookup = lookup;
     this.customHeaders = customHeaders;
-
-    // Validate origin URL
-    const url = new URL(this.origin);
-    if (url.protocol !== 'https:') {
-      throw new Error('HTTPS required — API credentials must not be sent over plain HTTP');
-    }
-    const host = url.hostname.toLowerCase();
-    if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('10.') ||
-        host.startsWith('192.168.') || host.startsWith('172.16.') || host === '[::1]') {
-      throw new Error('Cannot connect to local/private addresses');
-    }
 
     // Reuse TCP+TLS connections across requests
     this._agent = new https.Agent({ keepAlive: true, maxSockets: 2 });
@@ -46,11 +40,12 @@ class LogClient {
       const url = new URL(path, this.origin);
       const options = {
         hostname: url.hostname,
-        port: url.port,
+        port: url.port || 443,
         path: url.pathname + url.search,
         method: 'GET',
         headers: this._buildHeaders(),
-        agent: this._agent
+        agent: this._agent,
+        lookup: this.lookup
       };
 
       // Full lifecycle timeout (covers connect + response body)
