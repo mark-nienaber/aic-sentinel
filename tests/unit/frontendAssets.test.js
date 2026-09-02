@@ -10,9 +10,12 @@ test('HTML loads no CDN assets', () => {
   assert.match(html, /\/vendor\/tailwindcss\/tailwind\.css/);
 });
 
-test('CSP only permits local app resources', () => {
+test('CSP permits Alpine expression evaluation only from local assets', () => {
   const csp = buildContentSecurityPolicy(3000);
+  const alpine = fs.readFileSync('public/vendor/alpinejs/cdn.min.js', 'utf8');
   assert.match(csp, /default-src 'self'/);
   assert.match(csp, /connect-src 'self' ws:\/\/127\.0\.0\.1:3000 ws:\/\/localhost:3000/);
+  assert.match(csp, /script-src 'self' 'unsafe-eval'/);
   assert.doesNotMatch(csp, /https:\/\//);
+  assert.match(alpine, /with \(scope\)/);
 });

@@ -37,7 +37,7 @@ function buildContentSecurityPolicy(port) {
     `connect-src 'self' ws://127.0.0.1:${port} ws://localhost:${port}`,
     "img-src 'self' data:",
     "style-src 'self'",
-    "script-src 'self'"
+    "script-src 'self' 'unsafe-eval'"
   ].join('; ');
 }
 
