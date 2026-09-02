@@ -19,8 +19,12 @@ function isAllowedOrigin(origin, port) {
   }
 }
 
+function isAllowedHttpRequest(origin, remoteAddress, port) {
+  return isLoopbackRemoteAddress(remoteAddress) && (!origin || isAllowedOrigin(origin, port));
+}
+
 function requireLocalOrigin(req, res, next) {
-  if (!isLoopbackRemoteAddress(req.socket.remoteAddress) || !isAllowedOrigin(req.get('origin'), req.socket.localPort)) {
+  if (!isAllowedHttpRequest(req.get('origin'), req.socket.remoteAddress, req.socket.localPort)) {
     return res.status(403).json({ error: 'AIC Sentinel accepts requests only from its local browser UI' });
   }
 
@@ -44,6 +48,7 @@ function buildContentSecurityPolicy(port) {
 module.exports = {
   LOCAL_HOST,
   isAllowedOrigin,
+  isAllowedHttpRequest,
   isLoopbackRemoteAddress,
   requireLocalOrigin,
   buildContentSecurityPolicy
