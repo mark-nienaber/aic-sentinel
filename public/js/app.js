@@ -10,9 +10,10 @@ document.addEventListener('alpine:init', () => {
     showKey: false,
     showSecret: false,
     tenantName: '',
-    saveConnection: false,
     savedConnections: [],
-    selectedConnectionIdx: -1,
+    selectedTenantId: '',
+    keychainWarning: '',
+    approveCustomDomain: false,
     showSavedDropdown: false,
 
     // WebSocket
@@ -61,12 +62,6 @@ document.addEventListener('alpine:init', () => {
     // Custom noise filters (user-added)
     customNoiseLoggers: [],
 
-    // Custom headers (hidden feature)
-    showCustomHeaders: false,
-    customHeaders: [],
-    _versionClicks: 0,
-    _versionClickTimer: null,
-
     // Export
     showExport: false,
     exportFormat: 'json',
@@ -86,115 +81,63 @@ document.addEventListener('alpine:init', () => {
     rateLimit: { limit: 0, remaining: 0, resetTime: 0 },
 
     async init() {
-      // Load config defaults from server
       try {
         const res = await fetch('/api/config');
         const config = await res.json();
-        this.origin = config.defaultOrigin || '';
-        this.apiKey = config.defaultApiKey || '';
-        this.apiSecret = config.defaultApiSecret || '';
         this.pollFrequency = config.pollFrequency || 10;
         this.maxLogBuffer = config.maxLogBuffer || 5000;
       } catch (e) {
         console.error('Failed to load config:', e);
       }
 
-      // Load saved connections
-      try {
-        const saved = localStorage.getItem('aic-sentinel-connections');
-        if (saved) this.savedConnections = JSON.parse(saved);
-        // Migrate old single-connection format
-        const legacy = localStorage.getItem('aic-sentinel-connection');
-        if (legacy && this.savedConnections.length === 0) {
-          const conn = JSON.parse(legacy);
-          if (conn.origin) {
-            this.savedConnections.push({
-              name: conn.origin.replace(/^https?:\/\//, '').replace('.forgeblocks.com', '').replace('.id.forgerock.io', ''),
-              origin: conn.origin,
-              apiKey: conn.apiKey || '',
-              apiSecret: conn.apiSecret || ''
-            });
-            localStorage.setItem('aic-sentinel-connections', JSON.stringify(this.savedConnections));
-            localStorage.removeItem('aic-sentinel-connection');
-          }
-        }
-      } catch {}
+      await this.refreshTenants();
+      this._migrateLegacyConnections();
 
-      // Load noise categories from server
       try {
         const res = await fetch('/api/categories');
         const data = await res.json();
         if (data.noiseCategories) {
           this.noiseCategories = data.noiseCategories;
-          // Initialize enabled categories from localStorage or defaults
           const saved = localStorage.getItem('aic-sentinel-noise-categories');
-          if (saved) {
-            this.enabledNoiseCategories = JSON.parse(saved);
-          } else {
-            this.enabledNoiseCategories = data.noiseCategories
-              .filter(c => c.defaultEnabled)
-              .map(c => c.id);
-          }
+          if (saved) this.enabledNoiseCategories = JSON.parse(saved);
+          else this.enabledNoiseCategories = data.noiseCategories.filter(c => c.defaultEnabled).map(c => c.id);
         }
       } catch (e) {
         console.error('Failed to load categories:', e);
       }
 
-      // Restore custom noise loggers from localStorage
       try {
         const saved = localStorage.getItem('aic-sentinel-custom-noise');
         if (saved) this.customNoiseLoggers = JSON.parse(saved);
       } catch {}
 
-      // Restore custom headers from sessionStorage
-      try {
-        const saved = sessionStorage.getItem('aic-sentinel-custom-headers');
-        if (saved) {
-          this.customHeaders = JSON.parse(saved);
-          this.showCustomHeaders = this.customHeaders.length > 0;
-        }
-      } catch {}
-
-      // Watch poll frequency changes and restart tail
       this.$watch('pollFrequency', () => {
         if (this.tailing) this.restartTail();
       });
-
-      // Auto-reconnect from saved session
-      try {
-        const session = sessionStorage.getItem('aic-sentinel-session');
-        if (session) {
-          const s = JSON.parse(session);
-          this.origin = s.origin || this.origin;
-          this.apiKey = s.apiKey || this.apiKey;
-          this.apiSecret = s.apiSecret || this.apiSecret;
-          if (s.activeSources) this.activeSources = s.activeSources;
-          if (s.pollFrequency) this.pollFrequency = s.pollFrequency;
-          if (s.maxLogBuffer) this.maxLogBuffer = s.maxLogBuffer;
-          if (s.logLevelFilter) this.logLevelFilter = s.logLevelFilter;
-          if (s.origin && s.apiKey && s.apiSecret) {
-            this.connect();
-          }
-        }
-      } catch {}
     },
 
-    _saveSession() {
+    async refreshTenants() {
       try {
-        sessionStorage.setItem('aic-sentinel-session', JSON.stringify({
-          origin: this.origin,
-          apiKey: this.apiKey,
-          apiSecret: this.apiSecret,
-          activeSources: this.activeSources,
-          pollFrequency: this.pollFrequency,
-          maxLogBuffer: this.maxLogBuffer,
-          logLevelFilter: this.logLevelFilter
-        }));
-      } catch {}
+        const res = await fetch('/api/tenants');
+        const data = await res.json();
+        this.savedConnections = Array.isArray(data.tenants) ? data.tenants : [];
+        this.keychainWarning = data.keychain?.persistent === false ? data.keychain.message : '';
+        localStorage.setItem('aic-sentinel-connections', JSON.stringify(this.savedConnections));
+      } catch (e) {
+        this.connectionError = 'Failed to load saved tenants: ' + e.message;
+      }
     },
 
-    _clearSession() {
-      sessionStorage.removeItem('aic-sentinel-session');
+    _migrateLegacyConnections() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('aic-sentinel-connections') || '[]');
+        const safe = Array.isArray(saved) ? saved
+          .filter(conn => conn && conn.id && conn.origin)
+          .map(({ id, name, origin, apiKeyId, approvedCustomDomain }) => ({ id, name, origin, apiKeyId, approvedCustomDomain })) : [];
+        localStorage.setItem('aic-sentinel-connections', JSON.stringify(safe));
+        localStorage.removeItem('aic-sentinel-connection');
+        localStorage.removeItem('aic-sentinel-session');
+      } catch {}
     },
 
     // Noise category helpers
@@ -304,39 +247,36 @@ document.addEventListener('alpine:init', () => {
       this.connecting = true;
       this.connectionError = '';
       try {
-        const headers = {};
-        this.customHeaders.filter(h => h.name && h.value).forEach(h => { headers[h.name] = h.value; });
-
-        const res = await fetch('/api/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            origin: this.origin,
-            apiKey: this.apiKey,
-            apiSecret: this.apiSecret,
-            customHeaders: headers
-          })
-        });
-        const data = await res.json();
-        if (!data.success) {
-          this.connectionError = data.error || 'Connection failed';
-          return;
+        if (this.selectedTenantId) {
+          const res = await fetch(`/api/tenants/${encodeURIComponent(this.selectedTenantId)}/test`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }
+          });
+          const data = await res.json();
+          if (!data.success) {
+            this.connectionError = data.error || 'Connection failed';
+            return;
+          }
+        } else {
+          const res = await fetch('/api/tenants', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ origin: this.origin, apiKey: this.apiKey, apiSecret: this.apiSecret, approveCustomDomain: this.approveCustomDomain })
+          });
+          const data = await res.json();
+          if (!data.success) {
+            this.connectionError = data.error || 'Connection failed';
+            return;
+          }
+          this.selectedTenantId = data.tenant.id;
+          this.savedConnections = [...this.savedConnections.filter(tenant => tenant.id !== data.tenant.id), data.tenant];
+          this.keychainWarning = data.keychain?.persistent === false ? data.keychain.message : '';
+          this.apiKey = '';
+          this.apiSecret = '';
         }
+
+        const tenant = this.savedConnections.find(item => item.id === this.selectedTenantId);
+        this.tenantName = tenant?.name || this.origin.replace(/^https?:\/\//, '');
         this.connected = true;
-        this.tenantName = this.origin.replace(/^https?:\/\//, '').replace('.forgeblocks.com', '').replace('.id.forgerock.io', '');
-
-        // Save connection if checkbox is checked
-        if (this.saveConnection) {
-          this._saveCurrentConnection();
-          this.saveConnection = false;
-        }
-
-        // Save custom headers to sessionStorage
-        if (this.customHeaders.length > 0) {
-          sessionStorage.setItem('aic-sentinel-custom-headers', JSON.stringify(this.customHeaders));
-        }
-
-        this._saveSession();
         this.connectWebSocket();
       } catch (e) {
         this.connectionError = 'Network error: ' + e.message;
@@ -352,16 +292,7 @@ document.addEventListener('alpine:init', () => {
       this.ws.onopen = () => {
         this.reconnectAttempts = 0;
         this.reconnecting = false;
-        const customH = {};
-        this.customHeaders.filter(h => h.name && h.value).forEach(h => { customH[h.name] = h.value; });
-        this.ws.send(JSON.stringify({
-          type: 'connect',
-          origin: this.origin,
-          apiKey: this.apiKey,
-          apiSecret: this.apiSecret,
-          customHeaders: customH
-        }));
-        this.startTail();
+        this.ws.send(JSON.stringify({ type: 'connect', tenantId: this.selectedTenantId }));
       };
 
       this.ws.onmessage = (event) => {
@@ -394,6 +325,7 @@ document.addEventListener('alpine:init', () => {
           if (msg.rateLimit) this.rateLimit = msg.rateLimit;
           break;
         case 'connected':
+          this.startTail();
           break;
         case 'error':
           console.error('WS error:', msg.error);
@@ -440,7 +372,6 @@ document.addEventListener('alpine:init', () => {
     restartTail() {
       if (this.tailing) {
         this.stopTail();
-        this._saveSession();
         setTimeout(() => this.startTail(), 100);
       }
     },
@@ -477,36 +408,35 @@ document.addEventListener('alpine:init', () => {
       this.tailing = false;
       this.reconnecting = false;
       this.logs = [];
-      this._clearSession();
     },
 
-    // Saved connections
-    _saveCurrentConnection() {
-      const name = this.origin.replace(/^https?:\/\//, '').replace('.forgeblocks.com', '').replace('.id.forgerock.io', '');
-      const existing = this.savedConnections.findIndex(c => c.origin === this.origin);
-      const conn = { name, origin: this.origin, apiKey: this.apiKey, apiSecret: this.apiSecret };
-      if (existing >= 0) {
-        this.savedConnections[existing] = conn;
-      } else {
-        this.savedConnections.push(conn);
-      }
-      localStorage.setItem('aic-sentinel-connections', JSON.stringify(this.savedConnections));
-    },
-
+    // Saved tenants
     loadSavedConnection(idx) {
-      const conn = this.savedConnections[idx];
-      if (!conn) return;
-      this.origin = conn.origin;
-      this.apiKey = conn.apiKey;
-      this.apiSecret = conn.apiSecret;
-      this.selectedConnectionIdx = idx;
+      const tenant = this.savedConnections[idx];
+      if (!tenant) return;
+      this.selectedTenantId = tenant.id;
+      this.origin = tenant.origin;
+      this.tenantName = tenant.name;
       this.showSavedDropdown = false;
     },
 
-    deleteSavedConnection(idx) {
-      this.savedConnections.splice(idx, 1);
-      localStorage.setItem('aic-sentinel-connections', JSON.stringify(this.savedConnections));
-      if (this.selectedConnectionIdx === idx) this.selectedConnectionIdx = -1;
+    async deleteSavedConnection(idx) {
+      const tenant = this.savedConnections[idx];
+      if (!tenant) return;
+      try {
+        const res = await fetch(`/api/tenants/${encodeURIComponent(tenant.id)}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Unable to forget tenant');
+        this.savedConnections.splice(idx, 1);
+        localStorage.setItem('aic-sentinel-connections', JSON.stringify(this.savedConnections));
+        if (this.selectedTenantId === tenant.id) {
+          this.selectedTenantId = '';
+          this.tenantName = '';
+          this.origin = '';
+        }
+      } catch (e) {
+        this.connectionError = 'Unable to forget tenant: ' + e.message;
+      }
     },
 
     // Category presets (filtering applied reactively in filteredLogs getter)
@@ -554,17 +484,11 @@ document.addEventListener('alpine:init', () => {
     },
 
     async _fetchHistoryPage(cookie) {
-      const customH = {};
-      this.customHeaders.filter(h => h.name && h.value).forEach(h => { customH[h.name] = h.value; });
-
       const res = await fetch('/api/logs/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          origin: this.origin,
-          apiKey: this.apiKey,
-          apiSecret: this.apiSecret,
-          customHeaders: customH,
+          tenantId: this.selectedTenantId,
           source: this.activeSources.join(','),
           beginTime: datetimeLocalToISO(this.historyStart),
           endTime: datetimeLocalToISO(this.historyEnd),
@@ -697,37 +621,12 @@ document.addEventListener('alpine:init', () => {
       return this.customNoiseLoggers.includes(loggerName);
     },
 
-    // Hidden feature: custom headers
-    handleVersionClick() {
-      this._versionClicks++;
-      clearTimeout(this._versionClickTimer);
-      this._versionClickTimer = setTimeout(() => { this._versionClicks = 0; }, 3000);
-      if (this._versionClicks >= 5) {
-        this.showCustomHeaders = !this.showCustomHeaders;
-        if (this.showCustomHeaders && this.customHeaders.length === 0) {
-          this.customHeaders.push({ name: '', value: '' });
-        }
-        this._versionClicks = 0;
-        this.showSettings = true;
-      }
-    },
 
     handleKeydown(event) {
-      // Ctrl+Shift+H or Cmd+Shift+H - toggle custom headers
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'H') {
-        event.preventDefault();
-        this.showCustomHeaders = !this.showCustomHeaders;
-        if (this.showCustomHeaders && this.customHeaders.length === 0) {
-          this.customHeaders.push({ name: '', value: '' });
-        }
-        this.showSettings = true;
-      }
-      // Ctrl+H or Cmd+H - toggle history
-      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key === 'h') {
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'h') {
         event.preventDefault();
         this.showHistory = !this.showHistory;
       }
-      // Escape - close panels
       if (event.key === 'Escape') {
         this.showSettings = false;
         this.showHistory = false;
