@@ -15,7 +15,8 @@ const {
   LOCAL_HOST,
   isAllowedOrigin,
   isLoopbackRemoteAddress,
-  requireLocalOrigin
+  requireLocalOrigin,
+  buildContentSecurityPolicy
 } = require('./src/security/localOrigin');
 
 const app = express();
@@ -28,6 +29,10 @@ const dependencies = {
 };
 
 app.use(express.json());
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', buildContentSecurityPolicy(req.socket.localPort || PORT));
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/api', requireLocalOrigin, connectionRoutes.createRouter(dependencies));

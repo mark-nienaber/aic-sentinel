@@ -5,21 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AIC Sentinel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='8' fill='%23f26522'/><path d='M12 14h16v3H12zM12 20h16v3H12zM12 26h12v3H12z' fill='white'/></svg>">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            ping: { orange: '#f26522', dark: '#1a1a2e' }
-          }
-        }
-      }
-    }
-  </script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="/vendor/tailwindcss/tailwind.css">
   <link rel="stylesheet" href="/css/app.css">
+  <script defer src="/vendor/alpinejs/cdn.min.js"></script>
 </head>
 <body class="h-full bg-slate-900 text-slate-100 dark" x-data="app" @keydown.window="handleKeydown($event)">
 

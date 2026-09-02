@@ -27,4 +27,24 @@ function requireLocalOrigin(req, res, next) {
   next();
 }
 
-module.exports = { LOCAL_HOST, isAllowedOrigin, isLoopbackRemoteAddress, requireLocalOrigin };
+function buildContentSecurityPolicy(port) {
+  return [
+    "default-src 'self'",
+    "base-uri 'none'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    `connect-src 'self' ws://127.0.0.1:${port} ws://localhost:${port}`,
+    "img-src 'self' data:",
+    "style-src 'self'",
+    "script-src 'self'"
+  ].join('; ');
+}
+
+module.exports = {
+  LOCAL_HOST,
+  isAllowedOrigin,
+  isLoopbackRemoteAddress,
+  requireLocalOrigin,
+  buildContentSecurityPolicy
+};
