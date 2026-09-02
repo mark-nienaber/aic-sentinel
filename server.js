@@ -7,6 +7,9 @@ const path = require('path');
 const connectionRoutes = require('./src/routes/connection');
 const logRoutes = require('./src/routes/logs');
 const TailManager = require('./src/ws/tailManager');
+const CredentialStore = require('./src/credentials/credentialStore');
+const TenantRegistry = require('./src/tenants/tenantRegistry');
+const { validateAicOrigin } = require('./src/security/originPolicy');
 const {
   LOCAL_HOST,
   isAllowedOrigin,
@@ -17,12 +20,17 @@ const {
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
+const dependencies = {
+  tenantRegistry: new TenantRegistry(),
+  credentialStore: new CredentialStore(),
+  validateOrigin: validateAicOrigin
+};
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/api', requireLocalOrigin, connectionRoutes);
-app.use('/api', requireLocalOrigin, logRoutes);
+app.use('/api', requireLocalOrigin, connectionRoutes.createRouter(dependencies));
+app.use('/api', requireLocalOrigin, logRoutes.createRouter(dependencies));
 
 wss.on('connection', (ws) => {
   new TailManager(ws);
