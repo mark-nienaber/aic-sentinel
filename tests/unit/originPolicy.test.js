@@ -27,3 +27,11 @@ test('rejects literal IP addresses, paths, and nondefault ForgeBlocks ports', as
   await assert.rejects(() => validateAicOrigin('https://tenant.forgeblocks.com/am', { lookup: publicLookup }));
   await assert.rejects(() => validateAicOrigin('https://tenant.forgeblocks.com:8443', { lookup: publicLookup }));
 });
+
+test('rejects private, mapped, and reserved IPv6 DNS answers', async () => {
+  for (const address of ['::', '0:0:0:0:0:0:0:1', 'fe90::1', 'fd00::1', 'ff01::1', '2001:db8::1', '::ffff:127.0.0.1', '::ffff:172.31.2.2']) {
+    await assert.rejects(() => validateAicOrigin('https://tenant.forgeblocks.com', {
+      lookup: async () => [{ address, family: 6 }]
+    }), new RegExp('public IP'));
+  }
+});

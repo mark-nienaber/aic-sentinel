@@ -30,13 +30,48 @@ function isPublicIpv4(address) {
   return true;
 }
 
+function ipv6ToBigInt(address) {
+  let normalized = address.toLowerCase();
+  if (normalized.includes('.')) {
+    const separator = normalized.lastIndexOf(':');
+    const ipv4 = normalized.slice(separator + 1).split('.').map(Number);
+    if (ipv4.length !== 4 || ipv4.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+      return null;
+    }
+    normalized = `${normalized.slice(0, separator)}:${((ipv4[0] << 8) | ipv4[1]).toString(16)}:${((ipv4[2] << 8) | ipv4[3]).toString(16)}`;
+  }
+
+  const parts = normalized.split('::');
+  if (parts.length > 2) return null;
+  const left = parts[0] ? parts[0].split(':') : [];
+  const right = parts.length === 2 && parts[1] ? parts[1].split(':') : [];
+  if (left.length + right.length > 8 || (parts.length === 1 && left.length !== 8)) return null;
+  const groups = [...left, ...Array(8 - left.length - right.length).fill('0'), ...right];
+  if (groups.some((group) => !/^[0-9a-f]{1,4}$/.test(group))) return null;
+  return groups.reduce((value, group) => (value << 16n) | BigInt(`0x${group}`), 0n);
+}
+
 function isPublicIpv6(address) {
-  const normalized = address.toLowerCase();
-  if (normalized === '::' || normalized === '::1') return false;
-  if (normalized.startsWith('fe80:') || normalized.startsWith('ff')) return false;
-  const first = Number.parseInt(normalized.split(':')[0], 16);
-  if ((first & 0xfe00) === 0xfc00) return false;
-  if (normalized.startsWith('2001:db8:')) return false;
+  const value = ipv6ToBigInt(address);
+  if (value === null || value === 0n || value === 1n) return false;
+
+  // IPv4-compatible and IPv4-mapped addresses must obey the IPv4 policy.
+  const high96 = value >> 32n;
+  if (high96 === 0n || high96 === 0xffffn) {
+    const ipv4 = Number(value & 0xffffffffn);
+    return isPublicIpv4([
+      (ipv4 >>> 24) & 255,
+      (ipv4 >>> 16) & 255,
+      (ipv4 >>> 8) & 255,
+      ipv4 & 255
+    ].join('.'));
+  }
+
+  // fe80::/10, fc00::/7, ff00::/8, and 2001:db8::/32 are non-public.
+  if ((value >> 118n) === 0x3fan) return false;
+  if ((value >> 121n) === 0x7en) return false;
+  if ((value >> 120n) === 0xffn) return false;
+  if ((value >> 96n) === 0x20010db8n) return false;
   return true;
 }
 
