@@ -3,8 +3,9 @@ const RateLimiter = require('../api/rateLimiter');
 const noiseData = require('../data/categories.json');
 
 class TailManager {
-  constructor(ws) {
+  constructor(ws, { createTenantClient } = {}) {
     this.ws = ws;
+    this.createTenantClient = createTenantClient;
     this.logClient = null;
     this.rateLimiter = new RateLimiter();
     this.polling = false;
@@ -25,7 +26,7 @@ class TailManager {
     ws.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw);
-        this.handleMessage(msg);
+        void this.handleMessage(msg);
       } catch (e) {
         this._send({ type: 'error', error: 'Invalid message format' });
       }
@@ -60,17 +61,32 @@ class TailManager {
     return false;
   }
 
-  handleMessage(msg) {
+  async handleMessage(msg) {
     switch (msg.type) {
-      case 'connect':
-        this.logClient = new LogClient({
-          origin: msg.origin,
-          apiKey: msg.apiKey,
-          apiSecret: msg.apiSecret,
-          customHeaders: msg.customHeaders || {}
-        });
-        this._send({ type: 'connected' });
+      case 'connect': {
+        if (['apiKey', 'apiSecret', 'origin', 'customHeaders'].some((field) => Object.hasOwn(msg, field))) {
+          this._send({ type: 'error', error: 'Browser credentials are not accepted; select a saved tenant' });
+          break;
+        }
+        if (typeof msg.tenantId !== 'string' || !msg.tenantId.trim()) {
+          this._send({ type: 'error', error: 'A saved tenant is required' });
+          break;
+        }
+        if (typeof this.createTenantClient !== 'function') {
+          this._send({ type: 'error', error: 'Tenant connection service unavailable' });
+          break;
+        }
+
+        try {
+          const client = await this.createTenantClient({ tenantId: msg.tenantId });
+          if (this.logClient?.destroy) this.logClient.destroy();
+          this.logClient = client;
+          this._send({ type: 'connected', tenantId: msg.tenantId });
+        } catch (error) {
+          this._send({ type: 'error', error: error.message || 'Connection failed' });
+        }
         break;
+      }
 
       case 'start_tail':
         if (msg.enabledNoiseCategories) {

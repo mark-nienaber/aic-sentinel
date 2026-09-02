@@ -10,6 +10,7 @@ const TailManager = require('./src/ws/tailManager');
 const CredentialStore = require('./src/credentials/credentialStore');
 const TenantRegistry = require('./src/tenants/tenantRegistry');
 const { validateAicOrigin } = require('./src/security/originPolicy');
+const { createTenantClient } = require('./src/services/tenantClient');
 const {
   LOCAL_HOST,
   isAllowedOrigin,
@@ -33,7 +34,9 @@ app.use('/api', requireLocalOrigin, connectionRoutes.createRouter(dependencies))
 app.use('/api', requireLocalOrigin, logRoutes.createRouter(dependencies));
 
 wss.on('connection', (ws) => {
-  new TailManager(ws);
+  new TailManager(ws, {
+    createTenantClient: ({ tenantId }) => createTenantClient({ tenantId, ...dependencies })
+  });
 });
 
 server.on('upgrade', (req, socket, head) => {
