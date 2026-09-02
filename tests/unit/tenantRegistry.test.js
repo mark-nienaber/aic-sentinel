@@ -14,7 +14,6 @@ test('persists only browser-safe tenant profile fields', () => {
     id: 'tenant-1',
     name: 'Development',
     origin: 'https://tenant.forgeblocks.com',
-    apiKeyId: 'key-id',
     approvedCustomDomain: false,
     apiSecret: 'must-not-persist'
   });
@@ -23,7 +22,6 @@ test('persists only browser-safe tenant profile fields', () => {
     id: 'tenant-1',
     name: 'Development',
     origin: 'https://tenant.forgeblocks.com',
-    apiKeyId: 'key-id',
     approvedCustomDomain: false
   });
   assert.equal(Object.hasOwn(registry.get('tenant-1'), 'apiSecret'), false);
@@ -46,7 +44,6 @@ test('strips unexpected fields from legacy registry records', () => {
     id: 'tenant-1',
     name: 'Development',
     origin: 'https://tenant.forgeblocks.com',
-    apiKeyId: 'key-id',
     approvedCustomDomain: false,
     apiSecret: 'legacy-secret'
   }]));
@@ -64,7 +61,6 @@ test('generates an ID when saving a tenant without one', () => {
   const tenant = registry.save({
     name: 'Development',
     origin: 'https://tenant.forgeblocks.com',
-    apiKeyId: 'key-id',
     approvedCustomDomain: false
   });
 

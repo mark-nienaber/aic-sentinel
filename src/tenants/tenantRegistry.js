@@ -10,8 +10,8 @@ function defaultFilePath() {
   return path.join(base, 'aic-sentinel', 'tenants.json');
 }
 
-function toProfile({ id, name, origin, apiKeyId, approvedCustomDomain = false }) {
-  return { id: id || crypto.randomUUID(), name, origin, apiKeyId, approvedCustomDomain: Boolean(approvedCustomDomain) };
+function toProfile({ id, name, origin, approvedCustomDomain = false }) {
+  return { id: id || crypto.randomUUID(), name, origin, approvedCustomDomain: Boolean(approvedCustomDomain) };
 }
 
 class TenantRegistry {

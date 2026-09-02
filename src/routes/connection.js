@@ -17,7 +17,7 @@ function connectionError(error) {
   return error.message || 'Connection failed';
 }
 
-function createRouter({ tenantRegistry, credentialStore, validateOrigin = validateAicOrigin }) {
+function createRouter({ tenantRegistry, credentialStore, validateOrigin = validateAicOrigin, LogClientClass = LogClient }) {
   const router = express.Router();
 
   router.get('/tenants', (_req, res) => {
@@ -25,22 +25,33 @@ function createRouter({ tenantRegistry, credentialStore, validateOrigin = valida
   });
 
   router.post('/tenants', async (req, res) => {
-    const { name, origin, apiKey, apiSecret, approveCustomDomain } = req.body || {};
+    const body = req.body || {};
+    const { name, origin, apiKey, apiSecret, approveCustomDomain } = body;
+    if (Object.hasOwn(body, 'customHeaders')) {
+      return res.status(400).json({ success: false, error: 'Custom headers are not accepted' });
+    }
     if (!origin || !apiKey || !apiSecret) {
       return res.status(400).json({ success: false, error: 'Missing required fields: origin, apiKey, apiSecret' });
     }
 
+    let submittedOrigin;
     try {
-      const defaultValidation = await validateOrigin(origin);
-      const hostname = new URL(defaultValidation.origin).hostname;
-      const isDefaultDomain = hostname.endsWith('.forgeblocks.com') || hostname.endsWith('.id.forgerock.io');
-      if (!isDefaultDomain && !approveCustomDomain) {
-        return res.status(400).json({ success: false, error: 'Custom tenant domain requires explicit local approval' });
-      }
-      const safeOrigin = isDefaultDomain
-        ? defaultValidation
-        : await validateOrigin(origin, { approvedCustomDomains: [origin] });
-      const client = new LogClient({ origin: safeOrigin.origin, lookup: safeOrigin.lookup, apiKey, apiSecret });
+      submittedOrigin = new URL(origin);
+    } catch {
+      return res.status(400).json({ success: false, error: 'Tenant origin must be a valid HTTPS URL' });
+    }
+    const hostname = submittedOrigin.hostname.toLowerCase();
+    const isDefaultDomain = (hostname.endsWith('.forgeblocks.com') && hostname.length > '.forgeblocks.com'.length) ||
+      (hostname.endsWith('.id.forgerock.io') && hostname.length > '.id.forgerock.io'.length);
+    if (!isDefaultDomain && !approveCustomDomain) {
+      return res.status(400).json({ success: false, error: 'Custom tenant domain requires explicit local approval' });
+    }
+
+    try {
+      const safeOrigin = await validateOrigin(origin, {
+        approvedCustomDomains: isDefaultDomain ? [] : [origin]
+      });
+      const client = new LogClientClass({ origin: safeOrigin.origin, lookup: safeOrigin.lookup, apiKey, apiSecret });
       try {
         await client.testConnection();
       } finally {
@@ -50,7 +61,6 @@ function createRouter({ tenantRegistry, credentialStore, validateOrigin = valida
       const tenant = tenantRegistry.save({
         name: name || hostname,
         origin: safeOrigin.origin,
-        apiKeyId: apiKey,
         approvedCustomDomain: !isDefaultDomain
       });
       credentialStore.save(tenant.id, { apiKey, apiSecret });
