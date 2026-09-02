@@ -30,7 +30,9 @@ wss.on('connection', (ws) => {
 
 server.on('upgrade', (req, socket, head) => {
   const port = server.address()?.port;
-  if (!isLoopbackRemoteAddress(req.socket.remoteAddress) || !isAllowedOrigin(req.headers.origin, port)) {
+  const requestPath = new URL(req.url, `http://${LOCAL_HOST}`).pathname;
+  if (requestPath !== '/ws/tail' ||
+      !isLoopbackRemoteAddress(req.socket.remoteAddress) || !isAllowedOrigin(req.headers.origin, port)) {
     socket.destroy();
     return;
   }
