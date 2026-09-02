@@ -7,6 +7,7 @@ class TailManager {
     this.ws = ws;
     this.createTenantClient = createTenantClient;
     this.logClient = null;
+    this._connectGeneration = 0;
     this.rateLimiter = new RateLimiter();
     this.polling = false;
     this.cookie = null;
@@ -26,8 +27,14 @@ class TailManager {
     ws.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw);
-        void this.handleMessage(msg);
-      } catch (e) {
+        if (!msg || Array.isArray(msg) || typeof msg !== 'object') {
+          this._send({ type: 'error', error: 'Invalid message format' });
+          return;
+        }
+        void this.handleMessage(msg).catch(() => {
+          this._send({ type: 'error', error: 'Invalid message format' });
+        });
+      } catch {
         this._send({ type: 'error', error: 'Invalid message format' });
       }
     });
@@ -77,13 +84,20 @@ class TailManager {
           break;
         }
 
+        const generation = ++this._connectGeneration;
         try {
           const client = await this.createTenantClient({ tenantId: msg.tenantId });
+          if (generation !== this._connectGeneration || this.ws.readyState !== 1) {
+            client?.destroy?.();
+            break;
+          }
           if (this.logClient?.destroy) this.logClient.destroy();
           this.logClient = client;
           this._send({ type: 'connected', tenantId: msg.tenantId });
         } catch (error) {
-          this._send({ type: 'error', error: error.message || 'Connection failed' });
+          if (generation === this._connectGeneration && this.ws.readyState === 1) {
+            this._send({ type: 'error', error: error.message || 'Connection failed' });
+          }
         }
         break;
       }
