@@ -337,8 +337,12 @@ class TailManager {
   }
 
   _send(data) {
-    if (this.ws.readyState === 1) {
+    if (this.ws.readyState !== 1) return false;
+    try {
       this.ws.send(JSON.stringify(data));
+      return true;
+    } catch {
+      return false;
     }
   }
 }

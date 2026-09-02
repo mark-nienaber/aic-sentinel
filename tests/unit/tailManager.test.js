@@ -74,3 +74,11 @@ test('rejects valid JSON that is not a message object', async () => {
   ws.handlers.message(Buffer.from('[]'));
   assert.match(ws.sent.at(-1).error, /Invalid message format/);
 });
+
+test('suppresses send failures while reporting malformed messages', () => {
+  const ws = fakeWs();
+  ws.send = () => { throw new Error('closed during send'); };
+  new TailManager(ws, { createTenantClient: async () => ({}) });
+
+  assert.doesNotThrow(() => ws.handlers.message(Buffer.from('null')));
+});
