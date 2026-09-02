@@ -26,12 +26,35 @@ test('persists only browser-safe tenant profile fields', () => {
     apiKeyId: 'key-id',
     approvedCustomDomain: false
   });
-  assert.equal(registry.get('tenant-1').apiSecret, undefined);
+  assert.equal(Object.hasOwn(registry.get('tenant-1'), 'apiSecret'), false);
   assert.equal(registry.list().length, 1);
   assert.equal(fs.readFileSync(filePath, 'utf8').includes('must-not-persist'), false);
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(directory).mode & 0o777, 0o700);
+    assert.equal(fs.statSync(filePath).mode & 0o777, 0o600);
+  }
 
   assert.equal(registry.remove('tenant-1'), true);
   assert.equal(registry.get('tenant-1'), null);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test('strips unexpected fields from legacy registry records', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aic-sentinel-'));
+  const filePath = path.join(directory, 'tenants.json');
+  fs.writeFileSync(filePath, JSON.stringify([{
+    id: 'tenant-1',
+    name: 'Development',
+    origin: 'https://tenant.forgeblocks.com',
+    apiKeyId: 'key-id',
+    approvedCustomDomain: false,
+    apiSecret: 'legacy-secret'
+  }]));
+
+  const registry = new TenantRegistry({ filePath });
+  const tenant = registry.get('tenant-1');
+  assert.equal(Object.hasOwn(tenant, 'apiSecret'), false);
+  assert.equal(Object.hasOwn(registry.list()[0], 'apiSecret'), false);
   fs.rmSync(directory, { recursive: true, force: true });
 });
 

@@ -22,7 +22,9 @@ class TenantRegistry {
   _read() {
     try {
       const data = JSON.parse(fs.readFileSync(this.filePath, 'utf8'));
-      return Array.isArray(data) ? data.filter(tenant => tenant && typeof tenant.id === 'string') : [];
+      return Array.isArray(data)
+        ? data.filter(tenant => tenant && typeof tenant.id === 'string').map(toProfile)
+        : [];
     } catch (error) {
       if (error.code === 'ENOENT') return [];
       return [];
@@ -32,8 +34,21 @@ class TenantRegistry {
   _write(tenants) {
     const directory = path.dirname(this.filePath);
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(this.filePath, JSON.stringify(tenants, null, 2) + '\n', { mode: 0o600 });
-    try { fs.chmodSync(this.filePath, 0o600); } catch {}
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(directory, 0o700);
+      } catch (error) {
+        if (!['ENOTSUP', 'EINVAL'].includes(error.code)) throw error;
+      }
+    }
+    fs.writeFileSync(this.filePath, JSON.stringify(tenants.map(toProfile), null, 2) + '\n', { mode: 0o600 });
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(this.filePath, 0o600);
+      } catch (error) {
+        if (!['ENOTSUP', 'EINVAL'].includes(error.code)) throw error;
+      }
+    }
   }
 
   list() {
