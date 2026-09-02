@@ -35,6 +35,15 @@ test('stores and removes secret outside browser profile', () => {
   assert.equal(store.get('tenant-1'), null);
 });
 
+test('surfaces persistent keychain deletion failures', () => {
+  class FailingDeleteEntry extends FakeEntry {
+    deletePassword() { throw new Error('keychain delete failed'); }
+  }
+
+  const store = new CredentialStore({ EntryClass: FailingDeleteEntry, serviceName: 'test-delete' });
+  assert.throws(() => store.remove('tenant-1'), /keychain delete failed/);
+});
+
 test('uses process memory only after OS keychain failure', () => {
   class FailingEntry {
     constructor() {}

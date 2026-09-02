@@ -5,7 +5,7 @@ const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB
 const REQUEST_TIMEOUT_MS = 30000;
 
 class LogClient {
-  constructor({ origin, apiKey, apiSecret, lookup, customHeaders = {} }) {
+  constructor({ origin, apiKey, apiSecret, lookup }) {
     if (!origin || typeof lookup !== 'function') {
       throw new Error('LogClient requires a prevalidated origin and pinned DNS lookup');
     }
@@ -14,7 +14,6 @@ class LogClient {
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
     this.lookup = lookup;
-    this.customHeaders = customHeaders;
 
     // Reuse TCP+TLS connections across requests
     this._agent = new https.Agent({ keepAlive: true, maxSockets: 2 });
@@ -22,8 +21,6 @@ class LogClient {
 
   _buildHeaders() {
     return {
-      ...this.customHeaders,
-      // Auth headers set last so custom headers cannot override them
       'x-api-key': this.apiKey,
       'x-api-secret': this.apiSecret,
     };

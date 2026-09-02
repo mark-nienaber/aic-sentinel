@@ -48,13 +48,10 @@ class CredentialStore {
   }
 
   remove(tenantId) {
-    this.memory.delete(tenantId);
-    if (!this.persistent) return;
-    try {
+    if (this.persistent) {
       this._entry(tenantId).deletePassword();
-    } catch {
-      this._markUnavailable();
     }
+    this.memory.delete(tenantId);
   }
 
   isAvailable() {

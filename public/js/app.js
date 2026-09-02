@@ -120,7 +120,11 @@ document.addEventListener('alpine:init', () => {
       try {
         const res = await fetch('/api/tenants');
         const data = await res.json();
-        this.savedConnections = Array.isArray(data.tenants) ? data.tenants : [];
+        this.savedConnections = Array.isArray(data.tenants)
+          ? data.tenants
+            .filter(tenant => tenant && typeof tenant.id === 'string' && typeof tenant.origin === 'string')
+            .map(({ id, name, origin, approvedCustomDomain }) => ({ id, name, origin, approvedCustomDomain: Boolean(approvedCustomDomain) }))
+          : [];
         this.keychainWarning = data.keychain?.persistent === false ? data.keychain.message : '';
         localStorage.setItem('aic-sentinel-connections', JSON.stringify(this.savedConnections));
       } catch (e) {
@@ -133,11 +137,12 @@ document.addEventListener('alpine:init', () => {
         const saved = JSON.parse(localStorage.getItem('aic-sentinel-connections') || '[]');
         const safe = Array.isArray(saved) ? saved
           .filter(conn => conn && conn.id && conn.origin)
-          .map(({ id, name, origin, apiKeyId, approvedCustomDomain }) => ({ id, name, origin, apiKeyId, approvedCustomDomain })) : [];
+          .map(({ id, name, origin, approvedCustomDomain }) => ({ id, name, origin, approvedCustomDomain: Boolean(approvedCustomDomain) })) : [];
         localStorage.setItem('aic-sentinel-connections', JSON.stringify(safe));
+      } catch {} finally {
         localStorage.removeItem('aic-sentinel-connection');
         localStorage.removeItem('aic-sentinel-session');
-      } catch {}
+      }
     },
 
     // Noise category helpers
@@ -427,6 +432,7 @@ document.addEventListener('alpine:init', () => {
         const res = await fetch(`/api/tenants/${encodeURIComponent(tenant.id)}`, { method: 'DELETE' });
         const data = await res.json();
         if (!data.success) throw new Error(data.error || 'Unable to forget tenant');
+        if (this.selectedTenantId === tenant.id) this.disconnect();
         this.savedConnections.splice(idx, 1);
         localStorage.setItem('aic-sentinel-connections', JSON.stringify(this.savedConnections));
         if (this.selectedTenantId === tenant.id) {

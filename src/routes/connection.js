@@ -84,9 +84,17 @@ function createRouter({ tenantRegistry, credentialStore, validateOrigin = valida
   });
 
   router.delete('/tenants/:tenantId', (req, res) => {
-    const removed = tenantRegistry.remove(req.params.tenantId);
-    credentialStore.remove(req.params.tenantId);
-    res.json({ success: true, removed });
+    const tenant = tenantRegistry.get(req.params.tenantId);
+    if (!tenant) return res.status(404).json({ success: false, error: 'Unknown tenant' });
+
+    try {
+      credentialStore.remove(req.params.tenantId);
+      const removed = tenantRegistry.remove(req.params.tenantId);
+      if (!removed) throw new Error('Unable to remove tenant profile');
+      res.json({ success: true, removed });
+    } catch (error) {
+      res.status(500).json({ success: false, error: `Unable to forget tenant: ${error.message}` });
+    }
   });
 
   return router;
