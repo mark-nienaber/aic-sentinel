@@ -14,6 +14,14 @@ test('accepts HTTPS ForgeBlocks origin with public DNS answer', async () => {
   }), undefined);
 });
 
+test('pinned lookup returns record array when all is requested', async () => {
+  const result = await validateAicOrigin('https://tenant.forgeblocks.com', { lookup: publicLookup });
+  result.lookup('ignored', { all: true }, (error, records) => {
+    assert.equal(error, null);
+    assert.deepEqual(records, [{ address: '18.202.1.10', family: 4 }]);
+  });
+});
+
 test('rejects non-HTTPS, unknown host, and private resolved address', async () => {
   await assert.rejects(() => validateAicOrigin('http://tenant.forgeblocks.com', { lookup: publicLookup }));
   await assert.rejects(() => validateAicOrigin('https://127.0.0.1.nip.io', { lookup: publicLookup }));

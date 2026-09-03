@@ -84,7 +84,10 @@ function isPublicIp(address) {
 
 function pinnedLookup(records) {
   const record = records[0];
-  return (_hostname, _options, callback) => callback(null, record.address, record.family);
+  return (_hostname, options, callback) => {
+    if (options.all) return callback(null, records);
+    return callback(null, record.address, record.family);
+  };
 }
 
 async function validateAicOrigin(origin, { lookup = dns.lookup, approvedCustomDomains = [] } = {}) {
