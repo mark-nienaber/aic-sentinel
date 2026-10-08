@@ -16,6 +16,19 @@ document.addEventListener('alpine:init', () => {
     approveCustomDomain: false,
     showSavedDropdown: false,
 
+    get needsDomainApproval() {
+      if (this.selectedTenantId) return false;
+      let hostname;
+      try {
+        hostname = new URL(this.origin).hostname.toLowerCase();
+      } catch {
+        return false;
+      }
+      const isDefault = ['.forgeblocks.com', '.id.forgerock.io']
+        .some(suffix => hostname.endsWith(suffix) && hostname.length > suffix.length);
+      return !isDefault;
+    },
+
     // WebSocket
     ws: null,
     reconnectAttempts: 0,
@@ -265,7 +278,7 @@ document.addEventListener('alpine:init', () => {
           const res = await fetch('/api/tenants', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ origin: this.origin, apiKey: this.apiKey, apiSecret: this.apiSecret, approveCustomDomain: this.approveCustomDomain })
+            body: JSON.stringify({ origin: this.origin, apiKey: this.apiKey, apiSecret: this.apiSecret, approveCustomDomain: this.needsDomainApproval && this.approveCustomDomain })
           });
           const data = await res.json();
           if (!data.success) {

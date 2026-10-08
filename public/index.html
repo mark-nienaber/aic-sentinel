@@ -86,6 +86,11 @@
           </div>
         </div>
 
+        <label x-show="needsDomainApproval" x-effect="origin; approveCustomDomain = false" class="flex items-start gap-2 cursor-pointer">
+          <input type="checkbox" x-model="approveCustomDomain" class="mt-0.5 rounded border-slate-500 bg-slate-900 text-ping-orange focus:ring-ping-orange">
+          <span class="text-xs text-slate-400">This isn't a <code>*.forgeblocks.com</code> or <code>*.id.forgerock.io</code> domain. I approve connecting to this custom tenant domain.</span>
+        </label>
+
         <div x-show="connectionError" class="bg-red-900/30 border border-red-800 rounded-lg px-3 py-2 text-sm text-red-300" x-text="connectionError"></div>
 
         <button @click="connect()" :disabled="connecting"
@@ -97,10 +102,6 @@
           </span>
         </button>
 
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" x-model="approveCustomDomain" class="rounded border-slate-500 bg-slate-900 text-ping-orange focus:ring-ping-orange">
-          <span class="text-xs text-slate-400">I approve this custom tenant domain</span>
-        </label>
         <p class="text-xs text-slate-400">Credentials save to your operating system keychain after a successful connection.</p>
 
         <div x-show="keychainWarning" class="text-xs text-amber-300" x-text="keychainWarning"></div>
