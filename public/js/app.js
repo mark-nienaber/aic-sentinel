@@ -124,6 +124,11 @@ document.addEventListener('alpine:init', () => {
         if (saved) this.customNoiseLoggers = JSON.parse(saved);
       } catch {}
 
+      this.$watch('origin', value => {
+        const tenant = this.savedConnections.find(item => item.id === this.selectedTenantId);
+        if (tenant && tenant.origin !== value) this.selectedTenantId = '';
+      });
+
       this.$watch('pollFrequency', () => {
         if (this.tailing) this.restartTail();
       });
@@ -272,6 +277,7 @@ document.addEventListener('alpine:init', () => {
           const data = await res.json();
           if (!data.success) {
             this.connectionError = data.error || 'Connection failed';
+            if (/No saved credentials/i.test(this.connectionError)) this.selectedTenantId = '';
             return;
           }
         } else {
