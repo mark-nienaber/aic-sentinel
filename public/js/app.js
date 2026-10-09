@@ -447,6 +447,7 @@ document.addEventListener('alpine:init', () => {
     async deleteSavedConnection(idx) {
       const tenant = this.savedConnections[idx];
       if (!tenant) return;
+      if (!confirm(`Delete "${tenant.name}" and its saved credentials from your keychain?`)) return;
       try {
         const res = await fetch(`/api/tenants/${encodeURIComponent(tenant.id)}`, { method: 'DELETE' });
         const data = await res.json();
